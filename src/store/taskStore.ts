@@ -1,7 +1,30 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { supabase } from '../lib/supabase';
-import type { Task, Project, Subtask, TaskTag } from '../lib/supabase';
+
+export interface Task {
+  id: string;
+  title: string;
+  description: string;
+  status: 'todo' | 'in-progress' | 'review' | 'done' | 'blocked';
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  start_date?: string;
+  due_date?: string;
+  assignee_id?: string;
+  project_id: string;
+  progress: number;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Subtask {
+  id: string;
+  task_id: string;
+  title: string;
+  completed: boolean;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface TaskWithDetails extends Task {
   subtasks: Subtask[];
@@ -11,6 +34,17 @@ export interface TaskWithDetails extends Task {
     name: string;
     avatar_url?: string;
   };
+}
+
+export interface Project {
+  id: string;
+  title: string;
+  description: string;
+  color: string;
+  status: string;
+  owner_id: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ProjectWithDetails extends Project {
@@ -51,183 +85,182 @@ interface TaskState {
   clearError: () => void;
 }
 
-// Mock data for fallback
-const mockTasks: TaskWithDetails[] = [
-  {
-    id: 'mock-task-1',
-    title: 'Design Homepage Layout',
-    description: 'Create wireframes and mockups for the new homepage design',
-    status: 'in_progress',
-    priority: 'high',
-    due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-    project_id: 'mock-project-1',
-    created_by: 'mock-user-1',
-    assignee_id: 'mock-user-1',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    subtasks: [
-      {
-        id: 'mock-subtask-1',
-        task_id: 'mock-task-1',
-        title: 'Create wireframes',
-        completed: true,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      },
-      {
-        id: 'mock-subtask-2',
-        task_id: 'mock-task-1',
-        title: 'Design mockups',
-        completed: false,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }
-    ],
-    tags: ['design', 'frontend'],
-    assignee: {
-      id: 'mock-user-1',
-      name: 'John Doe',
-      avatar_url: 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=150'
-    }
-  },
-  {
-    id: 'mock-task-2',
-    title: 'Implement User Authentication',
-    description: 'Set up user registration, login, and session management',
-    status: 'todo',
-    priority: 'high',
-    due_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
-    project_id: 'mock-project-1',
-    created_by: 'mock-user-2',
-    assignee_id: 'mock-user-2',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    subtasks: [],
-    tags: ['backend', 'security'],
-    assignee: {
-      id: 'mock-user-2',
-      name: 'Jane Smith',
-      avatar_url: 'https://images.pexels.com/photos/415829/pexels-photo-415829.jpeg?auto=compress&cs=tinysrgb&w=150'
-    }
-  },
-  {
-    id: 'mock-task-3',
-    title: 'Database Schema Design',
-    description: 'Design and implement the database schema for the application',
-    status: 'completed',
-    priority: 'medium',
-    due_date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-    project_id: 'mock-project-1',
-    created_by: 'mock-user-1',
-    assignee_id: 'mock-user-1',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    subtasks: [],
-    tags: ['database', 'backend'],
-    assignee: {
-      id: 'mock-user-1',
-      name: 'John Doe',
-      avatar_url: 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=150'
-    }
-  },
-  {
-    id: 'mock-task-4',
-    title: 'Mobile App Testing',
-    description: 'Conduct comprehensive testing on mobile devices',
-    status: 'in_progress',
-    priority: 'medium',
-    due_date: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString(),
-    project_id: 'mock-project-2',
-    created_by: 'mock-user-2',
-    assignee_id: 'mock-user-2',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    subtasks: [],
-    tags: ['testing', 'mobile'],
-    assignee: {
-      id: 'mock-user-2',
-      name: 'Jane Smith',
-      avatar_url: 'https://images.pexels.com/photos/415829/pexels-photo-415829.jpeg?auto=compress&cs=tinysrgb&w=150'
-    }
-  }
-];
+// Local storage keys
+const TASKS_STORAGE_KEY = 'taskflow_tasks';
+const PROJECTS_STORAGE_KEY = 'taskflow_projects';
 
-const mockProjects: ProjectWithDetails[] = [
-  {
-    id: 'mock-project-1',
-    title: 'TaskFlow Web Application',
-    description: 'Main web application for task and project management',
-    color: '#3b82f6',
-    status: 'active',
-    owner_id: 'mock-user-1',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    tasks: mockTasks.filter(task => task.project_id === 'mock-project-1'),
-    members: [
-      {
-        id: 'mock-user-1',
-        name: 'John Doe',
-        avatar_url: 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=150',
-        role: 'owner'
-      },
-      {
-        id: 'mock-user-2',
-        name: 'Jane Smith',
-        avatar_url: 'https://images.pexels.com/photos/415829/pexels-photo-415829.jpeg?auto=compress&cs=tinysrgb&w=150',
-        role: 'member'
-      }
-    ]
-  },
-  {
-    id: 'mock-project-2',
-    title: 'Mobile App Development',
-    description: 'Cross-platform mobile application development',
-    color: '#10b981',
-    status: 'active',
-    owner_id: 'mock-user-1',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    tasks: mockTasks.filter(task => task.project_id === 'mock-project-2'),
-    members: [
-      {
-        id: 'mock-user-1',
-        name: 'John Doe',
-        avatar_url: 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=150',
-        role: 'owner'
-      },
-      {
-        id: 'mock-user-2',
-        name: 'Jane Smith',
-        avatar_url: 'https://images.pexels.com/photos/415829/pexels-photo-415829.jpeg?auto=compress&cs=tinysrgb&w=150',
-        role: 'member'
-      }
-    ]
+// Helper functions for local storage
+const getStoredTasks = (): TaskWithDetails[] => {
+  try {
+    const tasks = localStorage.getItem(TASKS_STORAGE_KEY);
+    return tasks ? JSON.parse(tasks) : [];
+  } catch {
+    return [];
   }
-];
+};
 
-const handleAuthError = async (error: any) => {
-  console.error('Authentication error detected:', error);
-  
-  // Check if it's an authentication-related error
-  const isAuthError = error.message?.includes('Authentication failed') ||
-                     error.message?.includes('Not authenticated') ||
-                     error.message?.includes('Invalid session') ||
-                     error.message?.includes('Auth session missing');
-  
-  if (isAuthError) {
-    try {
-      // Import auth store dynamically to avoid circular dependencies
-      const { useAuthStore } = await import('./authStore');
-      const authStore = useAuthStore.getState();
-      
-      // Clear authentication state and redirect to login
-      authStore.logout();
-    } catch (importError) {
-      console.error('Failed to import auth store:', importError);
-      // Fallback: redirect to login page manually
-      window.location.href = '/auth';
-    }
+const saveStoredTasks = (tasks: TaskWithDetails[]) => {
+  localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(tasks));
+};
+
+const getStoredProjects = (): ProjectWithDetails[] => {
+  try {
+    const projects = localStorage.getItem(PROJECTS_STORAGE_KEY);
+    return projects ? JSON.parse(projects) : [];
+  } catch {
+    return [];
   }
+};
+
+const saveStoredProjects = (projects: ProjectWithDetails[]) => {
+  localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(projects));
+};
+
+// Generate unique ID
+const generateId = () => `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+// Mock data for initial setup
+const createInitialData = (userId: string) => {
+  const mockProjects: ProjectWithDetails[] = [
+    {
+      id: 'project_1',
+      title: 'TaskFlow Web Application',
+      description: 'Main web application for task and project management',
+      color: '#3b82f6',
+      status: 'active',
+      owner_id: userId,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      tasks: [],
+      members: [
+        {
+          id: userId,
+          name: 'You',
+          role: 'owner'
+        }
+      ]
+    },
+    {
+      id: 'project_2',
+      title: 'Mobile App Development',
+      description: 'Cross-platform mobile application development',
+      color: '#10b981',
+      status: 'active',
+      owner_id: userId,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      tasks: [],
+      members: [
+        {
+          id: userId,
+          name: 'You',
+          role: 'owner'
+        }
+      ]
+    }
+  ];
+
+  const mockTasks: TaskWithDetails[] = [
+    {
+      id: 'task_1',
+      title: 'Design Homepage Layout',
+      description: 'Create wireframes and mockups for the new homepage design',
+      status: 'in-progress',
+      priority: 'high',
+      due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      project_id: 'project_1',
+      created_by: userId,
+      assignee_id: userId,
+      progress: 0.6,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      subtasks: [
+        {
+          id: 'subtask_1',
+          task_id: 'task_1',
+          title: 'Create wireframes',
+          completed: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        },
+        {
+          id: 'subtask_2',
+          task_id: 'task_1',
+          title: 'Design mockups',
+          completed: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }
+      ],
+      tags: ['design', 'frontend'],
+      assignee: {
+        id: userId,
+        name: 'You'
+      }
+    },
+    {
+      id: 'task_2',
+      title: 'Implement User Authentication',
+      description: 'Set up user registration, login, and session management',
+      status: 'todo',
+      priority: 'high',
+      due_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+      project_id: 'project_1',
+      created_by: userId,
+      assignee_id: userId,
+      progress: 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      subtasks: [],
+      tags: ['backend', 'security'],
+      assignee: {
+        id: userId,
+        name: 'You'
+      }
+    },
+    {
+      id: 'task_3',
+      title: 'Database Schema Design',
+      description: 'Design and implement the database schema for the application',
+      status: 'done',
+      priority: 'medium',
+      due_date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+      project_id: 'project_1',
+      created_by: userId,
+      assignee_id: userId,
+      progress: 1,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      subtasks: [],
+      tags: ['database', 'backend'],
+      assignee: {
+        id: userId,
+        name: 'You'
+      }
+    },
+    {
+      id: 'task_4',
+      title: 'Mobile App Testing',
+      description: 'Conduct comprehensive testing on mobile devices',
+      status: 'in-progress',
+      priority: 'medium',
+      due_date: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString(),
+      project_id: 'project_2',
+      created_by: userId,
+      assignee_id: userId,
+      progress: 0.3,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      subtasks: [],
+      tags: ['testing', 'mobile'],
+      assignee: {
+        id: userId,
+        name: 'You'
+      }
+    }
+  ];
+
+  return { mockProjects, mockTasks };
 };
 
 export const useTaskStore = create<TaskState>()(
@@ -244,94 +277,15 @@ export const useTaskStore = create<TaskState>()(
         set({ isLoading: true, error: null });
         
         try {
-          const { data: { user }, error: userError } = await supabase.auth.getUser();
-          if (userError) {
-            console.error('Auth error:', userError);
-            throw new Error('Auth session missing!');
-          }
+          // Simulate network delay
+          await new Promise(resolve => setTimeout(resolve, 500));
           
-          if (!user) {
-            throw new Error('Not authenticated');
-          }
-
-          // Verify user session is valid
-          const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-          if (sessionError || !session) {
-            console.error('Session error:', sessionError);
-            throw new Error('Invalid session');
-          }
-
-          // First check if user has any projects, if not create a default one
-          const { data: existingProjects } = await supabase
-            .from('projects')
-            .select('id')
-            .eq('owner_id', user.id)
-            .limit(1);
-
-          if (!existingProjects || existingProjects.length === 0) {
-            // Create a default project
-            const { data: newProject, error: projectError } = await supabase
-              .from('projects')
-              .insert({
-                title: 'My First Project',
-                description: 'Welcome to TaskFlow! This is your first project.',
-                color: '#3b82f6',
-                owner_id: user.id,
-              })
-              .select()
-              .single();
-
-            if (!projectError && newProject) {
-              // Add user as project member
-              await supabase
-                .from('project_members')
-                .insert({
-                  project_id: newProject.id,
-                  user_id: user.id,
-                  role: 'owner',
-                });
-            }
-          }
-
-          // Fetch tasks with related data
-          const { data: tasksData, error: tasksError } = await supabase
-            .from('tasks')
-            .select(`
-              *,
-              subtasks (*),
-              task_tags (tag),
-              assignee:profiles!tasks_assignee_id_fkey (id, name, avatar_url)
-            `)
-            .order('created_at', { ascending: false });
-
-          if (tasksError) {
-            console.error('Tasks fetch error:', tasksError);
-            // Don't throw error if it's just empty results
-            if (tasksError.code !== 'PGRST116') {
-              throw tasksError;
-            }
-          }
-
-          // Transform the data
-          const tasks: TaskWithDetails[] = (tasksData || []).map(task => ({
-            ...task,
-            subtasks: task.subtasks || [],
-            tags: (task.task_tags || []).map((tt: any) => tt.tag),
-            assignee: task.assignee || undefined,
-          }));
-
+          const tasks = getStoredTasks();
           set({ tasks, isLoading: false });
         } catch (error: any) {
           console.error('Fetch tasks error:', error);
-          
-          // Handle authentication errors
-          await handleAuthError(error);
-          
-          // Use mock data as fallback
-          console.log('Using mock data for tasks due to authentication error');
           set({ 
-            tasks: mockTasks,
-            error: null, // Clear error to allow UI to function with mock data
+            error: error.message || 'Failed to fetch tasks', 
             isLoading: false 
           });
         }
@@ -341,31 +295,24 @@ export const useTaskStore = create<TaskState>()(
         set({ isLoading: true, error: null });
         
         try {
-          const { data: { user }, error: userError } = await supabase.auth.getUser();
-          if (userError || !user) {
-            throw new Error('Not authenticated');
-          }
-
-          const { data, error } = await supabase
-            .from('tasks')
-            .insert({
-              ...taskData,
-              created_by: user.id,
-            })
-            .select()
-            .single();
-
-          if (error) throw error;
-
-          // Refresh tasks
-          await get().fetchTasks();
-          set({ isLoading: false });
+          // Simulate network delay
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          const tasks = getStoredTasks();
+          const newTask: TaskWithDetails = {
+            ...taskData,
+            id: generateId(),
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            subtasks: [],
+            tags: [],
+          };
+          
+          const updatedTasks = [...tasks, newTask];
+          saveStoredTasks(updatedTasks);
+          set({ tasks: updatedTasks, isLoading: false });
         } catch (error: any) {
           console.error('Add task error:', error);
-          
-          // Handle authentication errors
-          await handleAuthError(error);
-          
           set({ 
             error: error.message || 'Failed to create task', 
             isLoading: false 
@@ -377,25 +324,20 @@ export const useTaskStore = create<TaskState>()(
         set({ isLoading: true, error: null });
         
         try {
-          const { error } = await supabase
-            .from('tasks')
-            .update({
-              ...updates,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', id);
-
-          if (error) throw error;
-
-          // Refresh tasks
-          await get().fetchTasks();
-          set({ isLoading: false });
+          // Simulate network delay
+          await new Promise(resolve => setTimeout(resolve, 300));
+          
+          const tasks = getStoredTasks();
+          const updatedTasks = tasks.map(task => 
+            task.id === id 
+              ? { ...task, ...updates, updated_at: new Date().toISOString() }
+              : task
+          );
+          
+          saveStoredTasks(updatedTasks);
+          set({ tasks: updatedTasks, isLoading: false });
         } catch (error: any) {
           console.error('Update task error:', error);
-          
-          // Handle authentication errors
-          await handleAuthError(error);
-          
           set({ 
             error: error.message || 'Failed to update task', 
             isLoading: false 
@@ -407,22 +349,16 @@ export const useTaskStore = create<TaskState>()(
         set({ isLoading: true, error: null });
         
         try {
-          const { error } = await supabase
-            .from('tasks')
-            .delete()
-            .eq('id', id);
-
-          if (error) throw error;
-
-          // Refresh tasks
-          await get().fetchTasks();
-          set({ isLoading: false });
+          // Simulate network delay
+          await new Promise(resolve => setTimeout(resolve, 300));
+          
+          const tasks = getStoredTasks();
+          const updatedTasks = tasks.filter(task => task.id !== id);
+          
+          saveStoredTasks(updatedTasks);
+          set({ tasks: updatedTasks, isLoading: false });
         } catch (error: any) {
           console.error('Delete task error:', error);
-          
-          // Handle authentication errors
-          await handleAuthError(error);
-          
           set({ 
             error: error.message || 'Failed to delete task', 
             isLoading: false 
@@ -434,54 +370,23 @@ export const useTaskStore = create<TaskState>()(
         set({ isLoading: true, error: null });
         
         try {
-          const { data: { user }, error: userError } = await supabase.auth.getUser();
-          if (userError) {
-            console.error('Auth error:', userError);
-            throw new Error('Authentication failed');
+          // Simulate network delay
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          let projects = getStoredProjects();
+          
+          // If no projects exist, create initial data
+          if (projects.length === 0) {
+            // Get current user from auth store
+            const authStore = (await import('./authStore')).useAuthStore.getState();
+            const userId = authStore.user?.id || 'default_user';
+            
+            const { mockProjects, mockTasks } = createInitialData(userId);
+            projects = mockProjects;
+            saveStoredProjects(projects);
+            saveStoredTasks(mockTasks);
           }
           
-          if (!user) {
-            throw new Error('Not authenticated');
-          }
-
-          // Verify user session is valid
-          const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-          if (sessionError || !session) {
-            console.error('Session error:', sessionError);
-            throw new Error('Invalid session');
-          }
-
-          // Fetch projects with members
-          const { data: projectsData, error: projectsError } = await supabase
-            .from('projects')
-            .select(`
-              *,
-              project_members (
-                role,
-                user:profiles (id, name, avatar_url)
-              )
-            `)
-            .eq('owner_id', user.id)
-            .order('created_at', { ascending: false });
-
-          if (projectsError) {
-            console.error('Projects fetch error:', projectsError);
-            // Don't throw error if it's just empty results
-            if (projectsError.code !== 'PGRST116') {
-              throw projectsError;
-            }
-          }
-
-          // Transform the data
-          const projects: ProjectWithDetails[] = (projectsData || []).map(project => ({
-            ...project,
-            tasks: [], // Will be populated when tasks are fetched
-            members: (project.project_members || []).map((pm: any) => ({
-              ...pm.user,
-              role: pm.role,
-            })),
-          }));
-
           set({ projects, isLoading: false });
 
           // Set default project if none selected
@@ -490,16 +395,8 @@ export const useTaskStore = create<TaskState>()(
           }
         } catch (error: any) {
           console.error('Fetch projects error:', error);
-          
-          // Handle authentication errors
-          await handleAuthError(error);
-          
-          // Use mock data as fallback
-          console.log('Using mock data for projects due to authentication error');
           set({ 
-            projects: mockProjects,
-            currentProject: mockProjects[0]?.id || null,
-            error: null, // Clear error to allow UI to function with mock data
+            error: error.message || 'Failed to fetch projects', 
             isLoading: false 
           });
         }
@@ -509,45 +406,36 @@ export const useTaskStore = create<TaskState>()(
         set({ isLoading: true, error: null });
         
         try {
-          const { data: { user }, error: userError } = await supabase.auth.getUser();
-          if (userError || !user) {
-            throw new Error('Not authenticated');
-          }
-
-          // Create project
-          const { data: project, error: projectError } = await supabase
-            .from('projects')
-            .insert({
-              ...projectData,
-              owner_id: user.id,
-            })
-            .select()
-            .single();
-
-          if (projectError) throw projectError;
-
-          // Add user as project member
-          const { error: memberError } = await supabase
-            .from('project_members')
-            .insert({
-              project_id: project.id,
-              user_id: user.id,
-              role: 'owner',
-            });
-
-          if (memberError) {
-            console.warn('Failed to add project member:', memberError);
-          }
-
-          // Refresh projects
-          await get().fetchProjects();
-          set({ isLoading: false });
+          // Simulate network delay
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Get current user from auth store
+          const authStore = (await import('./authStore')).useAuthStore.getState();
+          const userId = authStore.user?.id || 'default_user';
+          
+          const projects = getStoredProjects();
+          const newProject: ProjectWithDetails = {
+            ...projectData,
+            id: generateId(),
+            owner_id: userId,
+            status: 'active',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            tasks: [],
+            members: [
+              {
+                id: userId,
+                name: authStore.profile?.name || 'You',
+                role: 'owner'
+              }
+            ]
+          };
+          
+          const updatedProjects = [...projects, newProject];
+          saveStoredProjects(updatedProjects);
+          set({ projects: updatedProjects, isLoading: false });
         } catch (error: any) {
           console.error('Add project error:', error);
-          
-          // Handle authentication errors
-          await handleAuthError(error);
-          
           set({ 
             error: error.message || 'Failed to create project', 
             isLoading: false 
@@ -559,25 +447,20 @@ export const useTaskStore = create<TaskState>()(
         set({ isLoading: true, error: null });
         
         try {
-          const { error } = await supabase
-            .from('projects')
-            .update({
-              ...updates,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', id);
-
-          if (error) throw error;
-
-          // Refresh projects
-          await get().fetchProjects();
-          set({ isLoading: false });
+          // Simulate network delay
+          await new Promise(resolve => setTimeout(resolve, 300));
+          
+          const projects = getStoredProjects();
+          const updatedProjects = projects.map(project => 
+            project.id === id 
+              ? { ...project, ...updates, updated_at: new Date().toISOString() }
+              : project
+          );
+          
+          saveStoredProjects(updatedProjects);
+          set({ projects: updatedProjects, isLoading: false });
         } catch (error: any) {
           console.error('Update project error:', error);
-          
-          // Handle authentication errors
-          await handleAuthError(error);
-          
           set({ 
             error: error.message || 'Failed to update project', 
             isLoading: false 
@@ -589,28 +472,29 @@ export const useTaskStore = create<TaskState>()(
         set({ isLoading: true, error: null });
         
         try {
-          const { error } = await supabase
-            .from('projects')
-            .delete()
-            .eq('id', id);
-
-          if (error) throw error;
-
-          // Refresh projects
-          await get().fetchProjects();
+          // Simulate network delay
+          await new Promise(resolve => setTimeout(resolve, 300));
+          
+          const projects = getStoredProjects();
+          const tasks = getStoredTasks();
+          
+          // Remove project and its tasks
+          const updatedProjects = projects.filter(project => project.id !== id);
+          const updatedTasks = tasks.filter(task => task.project_id !== id);
+          
+          saveStoredProjects(updatedProjects);
+          saveStoredTasks(updatedTasks);
+          
+          set({ projects: updatedProjects, tasks: updatedTasks });
           
           // Clear current project if it was deleted
           if (get().currentProject === id) {
-            set({ currentProject: null });
+            set({ currentProject: updatedProjects.length > 0 ? updatedProjects[0].id : null });
           }
           
           set({ isLoading: false });
         } catch (error: any) {
           console.error('Delete project error:', error);
-          
-          // Handle authentication errors
-          await handleAuthError(error);
-          
           set({ 
             error: error.message || 'Failed to delete project', 
             isLoading: false 

@@ -1,21 +1,6 @@
-import { createClient } from '@supabase/supabase-js';
+// This file is kept for type definitions but Supabase functionality is disabled
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables. Please check your .env file.');
-}
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: true,
-  },
-});
-
-// Database types
+// Mock types for compatibility
 export interface Database {
   public: {
     Tables: {
@@ -161,3 +146,37 @@ export type Project = Database['public']['Tables']['projects']['Row'];
 export type Task = Database['public']['Tables']['tasks']['Row'];
 export type Subtask = Database['public']['Tables']['subtasks']['Row'];
 export type TaskTag = Database['public']['Tables']['task_tags']['Row'];
+
+// Mock supabase client for compatibility
+export const supabase = {
+  auth: {
+    signInWithPassword: () => Promise.resolve({ data: null, error: new Error('Database disabled') }),
+    signUp: () => Promise.resolve({ data: null, error: new Error('Database disabled') }),
+    signOut: () => Promise.resolve({ error: null }),
+    getUser: () => Promise.resolve({ data: { user: null }, error: new Error('Database disabled') }),
+    getSession: () => Promise.resolve({ data: { session: null }, error: new Error('Database disabled') }),
+    updateUser: () => Promise.resolve({ data: null, error: new Error('Database disabled') }),
+    onAuthStateChange: () => ({ data: { subscription: null }, error: null }),
+  },
+  from: () => ({
+    select: () => ({
+      eq: () => ({
+        single: () => Promise.resolve({ data: null, error: new Error('Database disabled') }),
+        maybeSingle: () => Promise.resolve({ data: null, error: new Error('Database disabled') }),
+      }),
+      order: () => Promise.resolve({ data: [], error: new Error('Database disabled') }),
+      limit: () => Promise.resolve({ data: [], error: new Error('Database disabled') }),
+    }),
+    insert: () => ({
+      select: () => ({
+        single: () => Promise.resolve({ data: null, error: new Error('Database disabled') }),
+      }),
+    }),
+    update: () => ({
+      eq: () => Promise.resolve({ data: null, error: new Error('Database disabled') }),
+    }),
+    delete: () => ({
+      eq: () => Promise.resolve({ data: null, error: new Error('Database disabled') }),
+    }),
+  }),
+};

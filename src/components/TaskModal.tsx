@@ -3,7 +3,6 @@ import { motion } from 'framer-motion';
 import { X, Calendar, User, Flag, Tag, Plus, Trash2 } from 'lucide-react';
 import { useTaskStore } from '../store/taskStore';
 import { useAuthStore } from '../store/authStore';
-import { supabase } from '../lib/supabase';
 import type { TaskWithDetails } from '../store/taskStore';
 
 interface TaskModalProps {
@@ -73,47 +72,11 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, task, projectId 
     try {
       if (task) {
         await updateTask(task.id, formData);
-        
-        // Update tags
-        if (tags.length > 0) {
-          await supabase.from('task_tags').delete().eq('task_id', task.id);
-          await supabase.from('task_tags').insert(
-            tags.map(tag => ({ task_id: task.id, tag }))
-          );
-        }
-
-        // Update subtasks
-        if (subtasks.length > 0) {
-          await supabase.from('subtasks').delete().eq('task_id', task.id);
-          await supabase.from('subtasks').insert(
-            subtasks.map(subtask => ({ task_id: task.id, ...subtask }))
-          );
-        }
       } else {
-        const { data: newTask, error } = await supabase
-          .from('tasks')
-          .insert({
-            ...formData,
-            created_by: user.id,
-          })
-          .select()
-          .single();
-
-        if (error) throw error;
-
-        // Add tags
-        if (tags.length > 0) {
-          await supabase.from('task_tags').insert(
-            tags.map(tag => ({ task_id: newTask.id, tag }))
-          );
-        }
-
-        // Add subtasks
-        if (subtasks.length > 0) {
-          await supabase.from('subtasks').insert(
-            subtasks.map(subtask => ({ task_id: newTask.id, ...subtask }))
-          );
-        }
+        await addTask({
+          ...formData,
+          created_by: user.id,
+        });
       }
       onClose();
     } catch (error) {

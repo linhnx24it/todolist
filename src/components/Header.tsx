@@ -13,7 +13,6 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useTaskStore } from '../store/taskStore';
-import { supabase } from '../lib/supabase';
 import TaskModal from './TaskModal';
 
 const Header = () => {
@@ -28,61 +27,37 @@ const Header = () => {
   const { currentProject, tasks, fetchTasks } = useTaskStore();
 
   useEffect(() => {
-    // Fetch notifications from database
-    const fetchNotifications = async () => {
-      if (!user) return;
-      
-      try {
-        // Mock notifications for now - you can implement a notifications table
-        const mockNotifications = [
-          {
-            id: 1,
-            title: 'Task completed',
-            message: 'Design mockups have been completed',
-            time: '5 min ago',
-            unread: true
-          },
-          {
-            id: 2,
-            title: 'New comment',
-            message: 'Sarah commented on your project',
-            time: '1 hour ago',
-            unread: true
-          },
-          {
-            id: 3,
-            title: 'Deadline reminder',
-            message: 'API documentation due tomorrow',
-            time: '2 hours ago',
-            unread: false
-          }
-        ];
-        setNotifications(mockNotifications);
-      } catch (error) {
-        console.error('Error fetching notifications:', error);
+    // Mock notifications for demo
+    const mockNotifications = [
+      {
+        id: 1,
+        title: 'Task completed',
+        message: 'Design mockups have been completed',
+        time: '5 min ago',
+        unread: true
+      },
+      {
+        id: 2,
+        title: 'New comment',
+        message: 'Sarah commented on your project',
+        time: '1 hour ago',
+        unread: true
+      },
+      {
+        id: 3,
+        title: 'Deadline reminder',
+        message: 'API documentation due tomorrow',
+        time: '2 hours ago',
+        unread: false
       }
-    };
-
-    fetchNotifications();
+    ];
+    setNotifications(mockNotifications);
   }, [user]);
 
-  const handleSearch = async (query: string) => {
+  const handleSearch = (query: string) => {
     setSearchQuery(query);
-    if (query.trim()) {
-      // Implement search functionality
-      try {
-        const { data, error } = await supabase
-          .from('tasks')
-          .select('*')
-          .ilike('title', `%${query}%`)
-          .limit(10);
-        
-        if (error) throw error;
-        // Handle search results
-      } catch (error) {
-        console.error('Search error:', error);
-      }
-    }
+    // Search functionality would be implemented here
+    console.log('Searching for:', query);
   };
 
   return (

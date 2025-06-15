@@ -1,8 +1,20 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { supabase } from '../lib/supabase';
-import type { User } from '@supabase/supabase-js';
-import type { Profile } from '../lib/supabase';
+
+interface User {
+  id: string;
+  email: string;
+  created_at: string;
+}
+
+interface Profile {
+  id: string;
+  email: string;
+  name: string;
+  avatar_url?: string;
+  created_at: string;
+  updated_at: string;
+}
 
 interface AuthState {
   user: User | null;
@@ -23,6 +35,66 @@ const isValidEmail = (email: string): boolean => {
   return emailRegex.test(email);
 };
 
+// Mock users storage
+const USERS_STORAGE_KEY = 'taskflow_users';
+const CURRENT_USER_KEY = 'taskflow_current_user';
+
+interface StoredUser {
+  id: string;
+  email: string;
+  password: string;
+  name: string;
+  avatar_url?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+const getStoredUsers = (): StoredUser[] => {
+  try {
+    const users = localStorage.getItem(USERS_STORAGE_KEY);
+    return users ? JSON.parse(users) : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveStoredUsers = (users: StoredUser[]) => {
+  localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
+};
+
+const findUserByEmail = (email: string): StoredUser | null => {
+  const users = getStoredUsers();
+  return users.find(user => user.email.toLowerCase() === email.toLowerCase()) || null;
+};
+
+const createUser = (email: string, password: string): StoredUser => {
+  const users = getStoredUsers();
+  const newUser: StoredUser = {
+    id: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    email: email.toLowerCase(),
+    password,
+    name: email.split('@')[0],
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  
+  users.push(newUser);
+  saveStoredUsers(users);
+  return newUser;
+};
+
+const updateUserPassword = (userId: string, newPassword: string): boolean => {
+  const users = getStoredUsers();
+  const userIndex = users.findIndex(user => user.id === userId);
+  
+  if (userIndex === -1) return false;
+  
+  users[userIndex].password = newPassword;
+  users[userIndex].updated_at = new Date().toISOString();
+  saveStoredUsers(users);
+  return true;
+};
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
@@ -35,6 +107,9 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         
         try {
+          // Simulate network delay
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
           if (!email.trim()) {
             throw new Error('Email is required');
           }
@@ -45,24 +120,29 @@ export const useAuthStore = create<AuthState>()(
             throw new Error('Please enter a valid email address');
           }
 
-          const { data, error } = await supabase.auth.signInWithPassword({
-            email: email.trim().toLowerCase(),
-            password,
-          });
-
-          if (error) {
-            if (error.message.includes('Invalid login credentials')) {
-              throw new Error('Invalid email or password. Please check your credentials.');
-            }
-            throw new Error(error.message);
-          }
-
-          if (data.user) {
-            set({ user: data.user });
-            await get().fetchProfile();
-          }
+          const storedUser = findUserByEmail(email.trim());
           
-          set({ isLoading: false });
+          if (!storedUser || storedUser.password !== password) {
+            throw new Error('Invalid email or password. Please check your credentials.');
+          }
+
+          const user: User = {
+            id: storedUser.id,
+            email: storedUser.email,
+            created_at: storedUser.created_at,
+          };
+
+          const profile: Profile = {
+            id: storedUser.id,
+            email: storedUser.email,
+            name: storedUser.name,
+            avatar_url: storedUser.avatar_url,
+            created_at: storedUser.created_at,
+            updated_at: storedUser.updated_at,
+          };
+
+          localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
+          set({ user, profile, isLoading: false });
         } catch (error: any) {
           console.error('Login error:', error);
           set({ 
@@ -76,6 +156,9 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         
         try {
+          // Simulate network delay
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
           if (!email.trim()) {
             throw new Error('Email is required');
           }
@@ -89,56 +172,30 @@ export const useAuthStore = create<AuthState>()(
             throw new Error('Password must be at least 6 characters');
           }
 
-          // Sign up without email confirmation
-          const { data, error } = await supabase.auth.signUp({
-            email: email.trim().toLowerCase(),
-            password,
-            options: {
-              emailRedirectTo: undefined, // Remove email redirect
-            },
-          });
-
-          if (error) {
-            if (error.message.includes('email_address_invalid')) {
-              throw new Error('Please enter a valid email address');
-            }
-            if (error.message.includes('User already registered')) {
-              throw new Error('An account with this email already exists. Please sign in instead.');
-            }
-            throw new Error(error.message);
+          const existingUser = findUserByEmail(email.trim());
+          if (existingUser) {
+            throw new Error('An account with this email already exists. Please sign in instead.');
           }
 
-          if (data.user) {
-            // Directly set the user and session
-            set({ user: data.user });
-            
-            // Wait for the trigger to create the profile
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            
-            try {
-              await get().fetchProfile();
-            } catch (profileError) {
-              console.warn('Profile not found, creating manually:', profileError);
-              
-              // Create profile manually if trigger failed
-              const { error: profileCreateError } = await supabase
-                .from('profiles')
-                .insert({
-                  id: data.user.id,
-                  email: data.user.email!,
-                  name: data.user.email!.split('@')[0], // Use email prefix as default name
-                });
-              
-              if (profileCreateError) {
-                console.warn('Manual profile creation failed:', profileCreateError);
-              } else {
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                await get().fetchProfile();
-              }
-            }
-          }
-          
-          set({ isLoading: false });
+          const storedUser = createUser(email.trim(), password);
+
+          const user: User = {
+            id: storedUser.id,
+            email: storedUser.email,
+            created_at: storedUser.created_at,
+          };
+
+          const profile: Profile = {
+            id: storedUser.id,
+            email: storedUser.email,
+            name: storedUser.name,
+            avatar_url: storedUser.avatar_url,
+            created_at: storedUser.created_at,
+            updated_at: storedUser.updated_at,
+          };
+
+          localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
+          set({ user, profile, isLoading: false });
         } catch (error: any) {
           console.error('Signup error:', error);
           set({ 
@@ -152,28 +209,22 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         
         try {
+          // Simulate network delay
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
           const { user } = get();
           if (!user) {
             throw new Error('Not authenticated');
           }
 
-          // First verify current password by attempting to sign in
-          const { error: verifyError } = await supabase.auth.signInWithPassword({
-            email: user.email!,
-            password: currentPassword,
-          });
-
-          if (verifyError) {
+          const storedUser = findUserByEmail(user.email);
+          if (!storedUser || storedUser.password !== currentPassword) {
             throw new Error('Current password is incorrect');
           }
 
-          // Update password
-          const { error } = await supabase.auth.updateUser({
-            password: newPassword
-          });
-
-          if (error) {
-            throw error;
+          const success = updateUserPassword(user.id, newPassword);
+          if (!success) {
+            throw new Error('Failed to update password');
           }
 
           set({ isLoading: false });
@@ -189,7 +240,7 @@ export const useAuthStore = create<AuthState>()(
 
       logout: async () => {
         try {
-          await supabase.auth.signOut();
+          localStorage.removeItem(CURRENT_USER_KEY);
           set({ user: null, profile: null, error: null });
         } catch (error: any) {
           console.error('Logout error:', error);
@@ -202,22 +253,17 @@ export const useAuthStore = create<AuthState>()(
         if (!user) return;
 
         try {
-          const { data, error } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', user.id)
-            .maybeSingle(); // Changed from .single() to .maybeSingle()
-
-          if (error) {
-            console.error('Error fetching profile:', error);
-            return;
-          }
-
-          if (data) {
-            set({ profile: data });
-          } else {
-            console.log('No profile found for user:', user.id);
-            // Profile doesn't exist yet, this is okay
+          const storedUser = findUserByEmail(user.email);
+          if (storedUser) {
+            const profile: Profile = {
+              id: storedUser.id,
+              email: storedUser.email,
+              name: storedUser.name,
+              avatar_url: storedUser.avatar_url,
+              created_at: storedUser.created_at,
+              updated_at: storedUser.updated_at,
+            };
+            set({ profile });
           }
         } catch (error: any) {
           console.error('Error fetching profile:', error);
@@ -238,14 +284,31 @@ export const useAuthStore = create<AuthState>()(
   )
 );
 
-// Initialize auth state
-supabase.auth.onAuthStateChange(async (event, session) => {
-  const { fetchProfile } = useAuthStore.getState();
-  
-  if (event === 'SIGNED_IN' && session?.user) {
-    useAuthStore.setState({ user: session.user });
-    await fetchProfile();
-  } else if (event === 'SIGNED_OUT') {
-    useAuthStore.setState({ user: null, profile: null });
+// Initialize auth state from localStorage on app start
+const initializeAuth = () => {
+  try {
+    const storedUser = localStorage.getItem(CURRENT_USER_KEY);
+    if (storedUser) {
+      const user = JSON.parse(storedUser);
+      const storedUserData = findUserByEmail(user.email);
+      
+      if (storedUserData) {
+        const profile: Profile = {
+          id: storedUserData.id,
+          email: storedUserData.email,
+          name: storedUserData.name,
+          avatar_url: storedUserData.avatar_url,
+          created_at: storedUserData.created_at,
+          updated_at: storedUserData.updated_at,
+        };
+        
+        useAuthStore.setState({ user, profile });
+      }
+    }
+  } catch (error) {
+    console.error('Error initializing auth:', error);
   }
-});
+};
+
+// Initialize on module load
+initializeAuth();
